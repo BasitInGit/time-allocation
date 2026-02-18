@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 function Calendar() {
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split("T")[0]
   );
+
+  const scrollRef = useRef(null);
+  const [showAbove, setShowAbove] = useState(false);
+  const [showBelow, setShowBelow] = useState(false);
 
   // Hardcoded schedule using your tasks
   const schedules = [
@@ -39,6 +43,35 @@ function Calendar() {
     });
   };
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const currentHour = new Date().getHours();
+    const scrollAmount = currentHour * 80;
+    el.scrollTop = scrollAmount - 100;
+
+    checkVisibleEvents();
+  }, []);
+
+  const checkVisibleEvents = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const scrollTop = el.scrollTop;
+    const visibleStartHour = Math.floor(scrollTop / 80);
+    const visibleEndHour = Math.floor(
+      (scrollTop + el.clientHeight) / 80
+    );
+
+    const eventHours = schedules.map((e) =>
+      parseInt(e.time.split(":")[0])
+    );
+
+    setShowAbove(eventHours.some((h) => h < visibleStartHour));
+    setShowBelow(eventHours.some((h) => h > visibleEndHour));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
@@ -58,10 +91,14 @@ function Calendar() {
         <button className="text-gray-600 hover:text-gray-800 text-2xl transition-colors">
             ⚙
         </button>
-        
+
       </div>
-      {/* Scrollable Timeline */}
-      <div className="h-[70vh] overflow-y-auto bg-white rounded-xl shadow p-4">
+
+      <div className="relative">
+      <div 
+        ref={scrollRef}
+        onScroll={checkVisibleEvents}
+        className="h-[70vh] overflow-y-auto bg-white rounded-xl shadow p-4">
         {hours.map((hour) => {
           const event = getEventForHour(hour);
 
@@ -94,6 +131,20 @@ function Calendar() {
             </div>
           );
         })}
+      </div>
+
+      {/* Indicators */}
+        {showAbove && (
+          <div className="absolute top-3 right-4 bg-gray-900 text-white text-xs px-3 py-1 rounded-full shadow">
+            ↑ Events above
+          </div>
+        )}
+
+        {showBelow && (
+          <div className="absolute bottom-3 right-4 bg-gray-900 text-white text-xs px-3 py-1 rounded-full shadow">
+            ↓ Events below
+          </div>
+        )}
       </div>
     </div>
   );
