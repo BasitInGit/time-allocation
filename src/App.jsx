@@ -5,9 +5,10 @@ import './App.css'
 import Home from "./pages/Home"
 import Calendar from "./pages/Calendar"
 import TimeDistribution from "./pages/TimeDistribution"
+import Personalise from './pages/Personalise'
 
 function App() {
-  return <TimeDistribution />
+  return <Home />
 }
 
 export default App
