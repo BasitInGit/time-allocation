@@ -4,9 +4,10 @@ import viteLogo from '/vite.svg'
 import './App.css'
 import Home from "./pages/Home"
 import Calendar from "./pages/Calendar"
+import TimeDistribution from "./pages/TimeDistribution"
 
 function App() {
-  return <Calendar />
+  return <TimeDistribution />
 }
 
 export default App
