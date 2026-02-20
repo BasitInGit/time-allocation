@@ -156,17 +156,14 @@ export default function TimeDistribution() {
 
               {/* Color Selector */}
               {isEditing && (
-                <div className="relative">
+                <div className="relative" ref={showColorPicker === index ? colorPickerRef : null}>
                   <div
                     onClick={() => setShowColorPicker(index)}
                     className="w-5 h-5 border rounded cursor-pointer"
                     style={{ backgroundColor: cat.fill }}
                   />
                   {showColorPicker === index && (
-                    <div
-                     ref={colorPickerRef} 
-                     className="absolute bg-white shadow-lg p-2 rounded-full flex gap-2 mt-2"
-                    >
+                    <div className="absolute bg-white shadow-lg p-2 rounded-full flex gap-2 mt-2">
 
                       {COLOR_OPTIONS.map((color) => (
                         <div
@@ -201,6 +198,7 @@ export default function TimeDistribution() {
                 type="range"
                 min="0"
                 max="100"
+                step="0.5"
                 value={cat.value}
                 onChange={(e) => updateValue(index, e.target.value)}
                 className="w-full"
@@ -248,14 +246,6 @@ export default function TimeDistribution() {
         </>
       )}
 
-      {/* Total Display */}
-      <div className="mt-4 mb-4 font-medium">
-        Total: {total.toFixed(0)}%
-        {total !== 100 && (
-          <span className="text-red-500 ml-2">(Must equal 100%)</span>
-        )}
-      </div>
-
       {/* Controls */}
       <div className="flex gap-3">
         {!isEditing ? (
@@ -270,7 +260,6 @@ export default function TimeDistribution() {
             <button
               onClick={() => setIsEditing(false)}
               className="flex-1 bg-green-600 text-white p-2 rounded-xl"
-              disabled={total !== 100}
             >
               Save
             </button>
