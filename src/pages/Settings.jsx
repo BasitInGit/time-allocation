@@ -4,7 +4,7 @@ function Settings() {
   const navigate = useNavigate();
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="flex-1 p-6 overflow-y-auto">
 
       {/* Header */}
       <div className="flex items-center mb-6">

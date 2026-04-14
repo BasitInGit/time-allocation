@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAppContext } from "../context/AppContext";
 
 const categories = {
   Academic: ["Lecture", "Study", "Group Project", "Reading"],
@@ -10,8 +12,27 @@ const categories = {
 const timesOfDay = ["Morning", "Afternoon", "Evening"];
 
 function PersonalizationPage({ onSave }) {
-  const [selectedTasks, setSelectedTasks] = useState({});
-  const [timePrefs, setTimePrefs] = useState({});
+  const navigate = useNavigate();
+
+  const { preferences, setPreferences } = useAppContext();
+
+  const [selectedTasks, setSelectedTasks] = useState(() => {
+    if (!preferences) return {};
+    const result = {};
+    Object.keys(preferences).forEach(cat => {
+      result[cat] = preferences[cat]?.tasks || [];
+    });
+    return result;
+  });
+
+  const [timePrefs, setTimePrefs] = useState(() => {
+    if (!preferences) return {};
+    const result = {};
+    Object.keys(preferences).forEach(cat => {
+      result[cat] = preferences[cat]?.preferredTime || "";
+    });
+    return result;
+  });
 
   const toggleTask = (category, task) => {
     setSelectedTasks((prev) => {
@@ -32,19 +53,27 @@ function PersonalizationPage({ onSave }) {
   );
 
   const handleSave = () => {
-    if (!canSave) return;
-    const result = {};
-    Object.keys(categories).forEach((cat) => {
-      result[cat] = {
+  if (!canSave) return;
+
+  const result = Object.fromEntries(
+    Object.keys(categories).map(cat => [
+      cat,
+      {
         tasks: selectedTasks[cat],
         preferredTime: timePrefs[cat],
-      };
-    });
-    onSave(result);
+      },
+    ])
+  );
+
+  setPreferences({
+  ...result,
+  isPersonalised: true,
+  });
+  navigate("/");
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+   <div className="flex-1 p-6 overflow-y-auto">
       <h2 className="text-2xl font-semibold mb-6">Personalize Your Schedule</h2>
 
       {/* Instruction */}

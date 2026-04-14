@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useAppContext } from "../context/AppContext";
 import {
   PieChart,
   Pie,
@@ -26,11 +27,16 @@ const COLOR_OPTIONS = [
 ]
 
 export default function TimeDistribution() {
+  
   const [isEditing, setIsEditing] = useState(false)
 
-  const [categories, setCategories] = useState([
-    { name: "Academic", value: 100, fill: "#6366F1" },
-  ])
+  const { timeDistribution, setTimeDistribution } = useAppContext();
+
+  const [categories, setCategories] = useState(
+    timeDistribution.length > 0
+      ? timeDistribution
+      : [{ name: "Academic", value: 100, fill: "#6366F1" }]
+  );
 
   const [showMore, setShowMore] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(null)
@@ -127,8 +133,7 @@ export default function TimeDistribution() {
     }
     }, [])
   return (
-    <div className="min-h-screen bg-gray-50 p-6 max-w-md mx-auto">
-
+    <div className="flex-1 p-6 overflow-y-auto">
       <h1 className="text-xl font-bold mb-6">Weekly Time Distribution</h1>
 
       {/* Donut Chart */}
@@ -258,7 +263,10 @@ export default function TimeDistribution() {
         ) : (
           <>
             <button
-              onClick={() => setIsEditing(false)}
+              onClick={() => {
+              setTimeDistribution(categories);
+              setIsEditing(false);
+              }}
               className="flex-1 bg-green-600 text-white p-2 rounded-xl"
             >
               Save
