@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { getActualWeeklyDistribution } from "../utils/analytics";
+import { getTasksForWeek, getWeekRangeLabel } from "../utils/dateUtils";
 
 const AppContext = createContext();
 
@@ -102,6 +104,13 @@ const getReminderTasks = () => {
     .slice(0, 3);
 };
 
+const getWeeklyActualDistribution = () => {
+  const weeklyTasks = getTasksForWeek(tasks);
+  return getActualWeeklyDistribution(weeklyTasks);
+};
+
+const weekLabel = getWeekRangeLabel();
+
   // LOAD FROM LOCAL STORAGE
   useEffect(() => {
     const savedTasks = JSON.parse(localStorage.getItem("tasks")) || [];
@@ -148,6 +157,8 @@ const getReminderTasks = () => {
 
         getUpcomingTasks,
         getReminderTasks,
+        getWeeklyActualDistribution,
+        weekLabel,
 
         preferences,
         setPreferences,

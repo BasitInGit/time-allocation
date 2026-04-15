@@ -66,7 +66,7 @@ function Layout() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 h-full p-6 overflow-hidden">
+      <div className="flex-1 h-screen overflow-y-auto p-6">
         <Outlet />
       </div>
     </div>

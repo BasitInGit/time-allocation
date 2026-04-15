@@ -1,10 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { useAppContext } from "../context/AppContext";
-import {
-  PieChart,
-  Pie,
-  ResponsiveContainer,
-} from "recharts"
+import { PieChart, Pie, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
 
 const AVAILABLE_CATEGORIES = [
   "Academic",
@@ -16,258 +12,279 @@ const AVAILABLE_CATEGORIES = [
   "Work",
 ]
 
-const COLOR_OPTIONS = [
-  "#6366F1",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#8B5CF6",
-  "#EC4899",
-  "#14B8A6",
-]
+const CATEGORY_COLORS = {
+  Academic: "#6366F1",
+  Health: "#10B981",
+  Leisure: "#F59E0B",
+  Family: "#EF4444",
+  "Personal Dev": "#8B5CF6",
+  Social: "#EC4899",
+  Work: "#14B8A6",
+};
 
 export default function TimeDistribution() {
   
   const [isEditing, setIsEditing] = useState(false)
 
-  const { timeDistribution, setTimeDistribution } = useAppContext();
-
+  const { timeDistribution, setTimeDistribution, getWeeklyActualDistribution, weekLabel } = useAppContext();
+  
   const [categories, setCategories] = useState(
-    timeDistribution.length > 0
-      ? timeDistribution
-      : [{ name: "Academic", value: 100, fill: "#6366F1" }]
-  );
+  timeDistribution.length > 0
+    ? timeDistribution
+    : [{ name: "Academic", value: 100, fill: "#6366F1" }]
+);
 
-  const [showMore, setShowMore] = useState(false)
-  const [showColorPicker, setShowColorPicker] = useState(null)
-  const colorPickerRef = useRef(null)
+const total = categories.reduce((sum, c) => sum + c.value, 0);
+const isValidTotal = total === 100;
 
-  const total = categories.reduce((sum, c) => sum + c.value, 0)
+const target = categories;
 
-  const evenlyDistribute = (newCategories) => {
-    const split = 100 / newCategories.length
-    return newCategories.map((c) => ({ ...c, value: split }))
-  }
+const actualRaw = getWeeklyActualDistribution();
+const actual = actualRaw?.length
+  ? actualRaw
+  : [];
+const hasActual = actual.length > 0;
 
-  const addCategory = (name) => {
-    if (categories.find((c) => c.name === name)) return
-    const newCats = evenlyDistribute([
-      ...categories,
-      { name, value: 0, fill: "#9CA3AF" },
-    ])
-    setCategories(newCats)
-  }
+const addCategory = (name) => {
+  if (categories.find((c) => c.name === name)) return;
+
+  setCategories([
+    ...categories,
+    {
+      name,
+      value: 0,
+      fill: CATEGORY_COLORS[name] || "#9CA3AF",
+    },
+  ]);
+};
 
   const removeCategory = (name) => {
-    const filtered = categories.filter((c) => c.name !== name)
-    if (filtered.length === 0) return
-    setCategories(evenlyDistribute(filtered))
-  }
+    const filtered = categories.filter((c) => c.name !== name);
+    if (filtered.length === 0) return;
+    setCategories(filtered);
+  };
 
-  const updateValue = (index, newValue) => {
-    const value = Math.max(0, Math.min(100, Number(newValue)))
-
-    const updated = [...categories]
-
-    // If only one category, force 100%
-    if (updated.length === 1) {
-        updated[0].value = 100
-        setCategories(updated)
-        return
-    }
-
-    const otherCategories = updated.filter((_, i) => i !== index)
-
-    const remaining = 100 - value
-
-    const totalOfOthers = otherCategories.reduce(
-        (sum, c) => sum + c.value,
-        0
-    )
-
-    // Redistribute proportionally
-    const redistributed = updated.map((cat, i) => {
-        if (i === index) {
-        return { ...cat, value }
-        }
-
-        const proportion =
-        totalOfOthers === 0
-            ? 1 / otherCategories.length
-            : cat.value / totalOfOthers
-
-        return {
-        ...cat,
-        value: parseFloat((remaining * proportion).toFixed(2)),
-        }
-    })
-
-    setCategories(redistributed)
-  }
-
-  const updateColor = (index, newColor) => {
-    const updated = [...categories]
-    updated[index].fill = newColor
-    setCategories(updated)
-    setShowColorPicker(null)
-  }
+  const updateValue = (index, value) => {
+    const updated = [...categories];
+    updated[index] = {
+      ...updated[index],
+      value: Number(value),
+    };
+    setCategories(updated);
+  };
 
   const reset = () => {
     setCategories([{ name: "Academic", value: 100, fill: "#6366F1" }])
   }
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-        if (
-        colorPickerRef.current &&
-        !colorPickerRef.current.contains(event.target)
-        ) {
-        setShowColorPicker(null)
-        }
-    }
+  const handleSave = () => {
+    if (!isValidTotal) return;
+    setTimeDistribution(categories);
+    setIsEditing(false);
+  };
 
-    document.addEventListener("mousedown", handleClickOutside)
+  const targetWithColors = target.map((entry) => ({
+  ...entry,
+  fill: CATEGORY_COLORS[entry.name] || "#9CA3AF",
+}));
 
-    return () => {
-        document.removeEventListener("mousedown", handleClickOutside)
-    }
-    }, [])
+const actualWithColors = actual.map((entry) => ({
+  ...entry,
+  fill: CATEGORY_COLORS[entry.name] || "#9CA3AF",
+}));
   return (
-    <div className="flex-1 p-6 overflow-y-auto">
+    <div className="flex flex-col gap-6 overflow-y-auto">
       <h1 className="text-xl font-bold mb-6">Weekly Time Distribution</h1>
+      <p className="text-sm text-gray-500 mb-6">
+        Week of {weekLabel}
+      </p>
 
-      {/* Donut Chart */}
-      <div className="h-64 mb-6">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={categories}
-              dataKey="value"
-              nameKey="name"
-              innerRadius={70}
-              outerRadius={100}
-              animationDuration={400}
-            />
-          </PieChart>
+      {/* CHARTS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+        {/* TARGET */}
+        <div className="bg-white p-4 rounded-xl shadow">
+          <h2 className="font-semibold mb-2">Target Distribution</h2>
+          
+          <div className="h-56">
+            <ResponsiveContainer>
+              <PieChart>
+                <Pie
+                  data={targetWithColors}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={60}
+                  outerRadius={90}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mt-4">
+            {target.map((cat) => (
+              <div key={cat.name} className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-sm"
+                  style={{ backgroundColor: CATEGORY_COLORS[cat.name] }}
+                />
+                <span className="text-sm text-gray-600">{cat.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Actual */}
+        <div className="bg-white p-4 rounded-xl shadow">
+          <h2 className="font-semibold mb-2">Actual Distribution</h2>
+
+          {actual.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-gray-400">
+              No tasks logged this week
+            </div>
+          ) : (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={actualWithColors}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={60}
+                    outerRadius={90}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-3 mt-4">
+            {actual.map((cat) => (
+              <div key={cat.name} className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-sm"
+                  style={{ backgroundColor: CATEGORY_COLORS[cat.name] }}
+                />
+                <span className="text-sm text-gray-600">{cat.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* TARGET vs ACTUAL COMPARISON */}
+      <div className={`bg-white p-4 rounded-xl shadow mb-6 ${hasActual ? "" : "opacity-50"}`}>
+
+        <h2 className="font-semibold mb-4">
+          Target vs Actual (Comparison)
+        </h2>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart
+            data={target.map(t => ({
+              name: t.name,
+              target: t.value,
+              actual: actual.find(a => a.name === t.name)?.value || 0
+            }))}
+          >
+
+            <XAxis dataKey="name" />
+            <YAxis />
+            <Bar dataKey="target" fill="#6366F1" />
+            <Bar dataKey="actual" fill="#10B981" />
+
+          </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Category List */}
-      {categories.map((cat, index) => (
-        <div key={index} className="mb-4 border p-3 rounded-xl bg-white">
+      {/* TARGET EDITING PANEL */}
+      <div className="bg-white p-4 rounded-xl shadow mt-6">
 
-          <div className="flex justify-between items-center mb-2">
-            <div className="flex items-center gap-3">
+        <h2 className="font-semibold mb-4">
+          Edit Target Distribution
+        </h2>
 
-              {/* Color Selector */}
+        {categories.map((cat, index) => (
+          <div key={index} className="mb-3 border p-3 rounded">
+
+            <div className="flex justify-between">
+              <span>{cat.name}</span>
+
               {isEditing && (
-                <div className="relative" ref={showColorPicker === index ? colorPickerRef : null}>
-                  <div
-                    onClick={() => setShowColorPicker(index)}
-                    className="w-5 h-5 border rounded cursor-pointer"
-                    style={{ backgroundColor: cat.fill }}
-                  />
-                  {showColorPicker === index && (
-                    <div className="absolute bg-white shadow-lg p-2 rounded-full flex gap-2 mt-2">
-
-                      {COLOR_OPTIONS.map((color) => (
-                        <div
-                          key={color}
-                          onClick={() => updateColor(index, color)}
-                          className="w-6 h-6 rounded-full cursor-pointer"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => removeCategory(cat.name)}
+                  className="text-red-500 text-sm"
+                >
+                  Remove
+                </button>
               )}
-
-              <span className="font-medium">{cat.name}</span>
             </div>
+
+            {/* SLIDER */}
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={cat.value}
+              disabled={!isEditing}
+              onChange={(e) => updateValue(index, e.target.value)}
+              className="w-full"
+            />
 
             {isEditing && (
-              <button
-                onClick={() => removeCategory(cat.name)}
-                className="text-red-500 text-sm"
-              >
-                Remove
-              </button>
+              <>
+                <input
+                  type="number"
+                  value={cat.value}
+                  onChange={(e) => updateValue(index, e.target.value)}
+                  className="w-full border mt-1 p-1"
+                />
+              </>
             )}
+
+            {!isEditing && (
+              <p className="text-sm text-gray-500">
+                {cat.value}%
+              </p>
+            )}
+
           </div>
+        ))}
+      </div>
 
-          {isEditing && (
-            <>
-              {/* Slider */}
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="0.5"
-                value={cat.value}
-                onChange={(e) => updateValue(index, e.target.value)}
-                className="w-full"
-              />
-
-              {/* Manual Edit */}
-              <input
-                type="number"
-                value={cat.value}
-                onChange={(e) => updateValue(index, e.target.value)}
-                className="mt-2 w-full border rounded p-1"
-              />
-            </>
-          )}
-
-          {!isEditing && (
-            <p className="text-gray-500">{cat.value.toFixed(0)}%</p>
-          )}
-        </div>
-      ))}
-
-      {/* Add Category */}
+      {/* ================= ADD CATEGORY ================= */}
       {isEditing && (
-        <>
-          <button
-            onClick={() => setShowMore(!showMore)}
-            className="text-indigo-600 mb-2"
-          >
-            {showMore ? "Hide Categories" : "Show More Categories"}
-          </button>
-
-          {showMore && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {AVAILABLE_CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => addCategory(cat)}
-                  className="px-3 py-1 bg-gray-200 rounded-full text-sm"
-                >
-                  + {cat}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+        <div className="bg-white p-4 rounded-xl shadow flex flex-wrap gap-2">
+          {AVAILABLE_CATEGORIES.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => addCategory(cat)}
+              className="px-3 py-1 bg-gray-200 rounded-full text-sm"
+            >
+              + {cat}
+            </button>
+          ))}
+        </div>
       )}
 
-      {/* Controls */}
+      {/* ================= CONTROLS ================= */}
       <div className="flex gap-3">
         {!isEditing ? (
           <button
             onClick={() => setIsEditing(true)}
             className="flex-1 bg-indigo-600 text-white p-2 rounded-xl"
           >
-            Edit Changes
+            Edit
           </button>
         ) : (
           <>
             <button
-              onClick={() => {
-              setTimeDistribution(categories);
-              setIsEditing(false);
-              }}
-              className="flex-1 bg-green-600 text-white p-2 rounded-xl"
+              onClick={handleSave}
+              disabled={!isValidTotal}
+              className={`flex-1 p-2 rounded-xl text-white ${
+                isValidTotal
+                  ? "bg-green-600"
+                  : "bg-gray-400 cursor-not-allowed"
+              }`}
             >
               Save
             </button>
@@ -282,5 +299,5 @@ export default function TimeDistribution() {
         )}
       </div>
     </div>
-  )
+  );
 }
