@@ -11,11 +11,11 @@ function Layout() {
   const navItems = [
     { name: "Home", path: "/", icon: <FiHome /> },
     { name: "Calendar", path: "/calendar", icon: <FiCalendar />, },
-    { name: "Generate", path: "/generate", icon: <FiZap /> },
+    { name: "Generate", path: "/schedulePage", icon: <FiZap /> },
     { name: "Settings", path: "/settings", icon: <FiSettings /> },
     { name: "Analytics", path: "/analytics", icon: <FiBarChart /> },
-    { name: "Personalise", path: "/personalise", icon: <FiUser /> },
-    { name: "Reminders", path: "/reminderPage", icon: <FiBell /> }
+    { name: "Reminders", path: "/reminderPage", icon: <FiBell /> },
+    { name: "Deadline", path: "/deadline", icon: <FiBell /> },
   ];
 
   return (

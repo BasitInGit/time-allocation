@@ -6,9 +6,6 @@ const AVAILABLE_CATEGORIES = [
   "Academic",
   "Health",
   "Leisure",
-  "Family",
-  "Personal Dev",
-  "Social",
   "Work",
 ]
 
@@ -16,23 +13,35 @@ const CATEGORY_COLORS = {
   Academic: "#6366F1",
   Health: "#10B981",
   Leisure: "#F59E0B",
-  Family: "#EF4444",
-  "Personal Dev": "#8B5CF6",
-  Social: "#EC4899",
   Work: "#14B8A6",
 };
 
 export default function TimeDistribution() {
   
-  const [isEditing, setIsEditing] = useState(false)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [draftCategories, setDraftCategories] = useState([]);
+
+  const openDrawer = () => {
+    setDraftCategories(categories);
+    setIsDrawerOpen(true);
+  };
 
   const { timeDistribution, setTimeDistribution, getWeeklyActualDistribution, weekLabel } = useAppContext();
   
-  const [categories, setCategories] = useState(
-  timeDistribution.length > 0
-    ? timeDistribution
-    : [{ name: "Academic", value: 100, fill: "#6366F1" }]
-);
+  const [categories, setCategories] = useState([]);
+
+useEffect(() => {
+  if (timeDistribution?.length) {
+    setCategories(timeDistribution);
+  } else {
+    setCategories([
+      { name: "Academic", value: 25, fill: "#6366F1" },
+      { name: "Health", value: 25, fill: "#10B981" },
+      { name: "Leisure", value: 25, fill: "#F59E0B" },
+      { name: "Work", value: 25, fill: "#14B8A6" },
+    ]);
+  }
+}, [timeDistribution]);
 
 const total = categories.reduce((sum, c) => sum + c.value, 0);
 const isValidTotal = total === 100;
@@ -46,10 +55,10 @@ const actual = actualRaw?.length
 const hasActual = actual.length > 0;
 
 const addCategory = (name) => {
-  if (categories.find((c) => c.name === name)) return;
+  if (draftCategories.find((c) => c.name === name)) return;
 
-  setCategories([
-    ...categories,
+  setDraftCategories([
+    ...draftCategories,
     {
       name,
       value: 0,
@@ -58,30 +67,34 @@ const addCategory = (name) => {
   ]);
 };
 
-  const removeCategory = (name) => {
-    const filtered = categories.filter((c) => c.name !== name);
-    if (filtered.length === 0) return;
-    setCategories(filtered);
-  };
+const removeCategory = (name) => {
+  const filtered = draftCategories.filter((c) => c.name !== name);
+  if (filtered.length === 0) return;
+  setDraftCategories(filtered);
+};
 
   const updateValue = (index, value) => {
-    const updated = [...categories];
-    updated[index] = {
-      ...updated[index],
-      value: Number(value),
-    };
-    setCategories(updated);
+  const updated = [...draftCategories];
+  updated[index] = {
+    ...updated[index],
+    value: Number(value),
   };
-
-  const reset = () => {
-    setCategories([{ name: "Academic", value: 100, fill: "#6366F1" }])
-  }
+  setDraftCategories(updated);
+};
 
   const handleSave = () => {
-    if (!isValidTotal) return;
-    setTimeDistribution(categories);
-    setIsEditing(false);
-  };
+  const total = draftCategories.reduce((sum, c) => sum + c.value, 0);
+  if (total !== 100) return;
+
+  setCategories(draftCategories);
+  setTimeDistribution(draftCategories);
+  setIsDrawerOpen(false);
+};
+
+const handleCancel = () => {
+  setIsDrawerOpen(false);
+  setDraftCategories([]);
+};
 
   const targetWithColors = target.map((entry) => ({
   ...entry,
@@ -94,10 +107,17 @@ const actualWithColors = actual.map((entry) => ({
 }));
   return (
     <div className="flex flex-col gap-6 overflow-y-auto">
-      <h1 className="text-xl font-bold mb-6">Weekly Time Distribution</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        Week of {weekLabel}
-      </p>
+      <div className="flex items-baseline justify-between mb-6">
+  
+        <h1 className="text-xl font-bold">
+          Weekly Time Distribution
+        </h1>
+
+        <p className="text-sm text-gray-500">
+          {weekLabel}
+        </p>
+
+      </div>
 
       {/* CHARTS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -195,65 +215,65 @@ const actualWithColors = actual.map((entry) => ({
         </ResponsiveContainer>
       </div>
 
-      {/* TARGET EDITING PANEL */}
-      <div className="bg-white p-4 rounded-xl shadow mt-6">
+      <button
+        onClick={openDrawer}
+        className="flex-1 bg-indigo-600 text-white p-2 rounded-xl"
+      >
+        Edit Target Distribution
+      </button>
 
-        <h2 className="font-semibold mb-4">
-          Edit Target Distribution
+      {isDrawerOpen && (
+    <div className="fixed inset-0 z-50">
+      
+      {/* overlay */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={handleCancel}
+      />
+
+      {/* drawer */}
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl p-6 overflow-y-auto transform transition-transform">
+        
+        <h2 className="text-lg font-semibold mb-4">
+          Edit Time Distribution
         </h2>
 
-        {categories.map((cat, index) => (
+        {/* categories */}
+        {draftCategories.map((cat, index) => (
           <div key={index} className="mb-3 border p-3 rounded">
-
+            
             <div className="flex justify-between">
               <span>{cat.name}</span>
 
-              {isEditing && (
-                <button
-                  onClick={() => removeCategory(cat.name)}
-                  className="text-red-500 text-sm"
-                >
-                  Remove
-                </button>
-              )}
+              <button
+                onClick={() => removeCategory(cat.name)}
+                className="text-red-500 text-sm"
+              >
+                Remove
+              </button>
             </div>
 
-            {/* SLIDER */}
             <input
               type="range"
               min="0"
               max="100"
-              step="1"
               value={cat.value}
-              disabled={!isEditing}
               onChange={(e) => updateValue(index, e.target.value)}
               className="w-full"
             />
 
-            {isEditing && (
-              <>
-                <input
-                  type="number"
-                  value={cat.value}
-                  onChange={(e) => updateValue(index, e.target.value)}
-                  className="w-full border mt-1 p-1"
-                />
-              </>
-            )}
-
-            {!isEditing && (
-              <p className="text-sm text-gray-500">
-                {cat.value}%
-              </p>
-            )}
+            <input
+              type="number"
+              value={cat.value}
+              onChange={(e) => updateValue(index, e.target.value)}
+              className="w-full border mt-1 p-1"
+            />
 
           </div>
         ))}
-      </div>
 
-      {/* ================= ADD CATEGORY ================= */}
-      {isEditing && (
-        <div className="bg-white p-4 rounded-xl shadow flex flex-wrap gap-2">
+        {/* add categories */}
+        <div className="flex flex-wrap gap-2 mt-4">
           {AVAILABLE_CATEGORIES.map((cat) => (
             <button
               key={cat}
@@ -264,40 +284,28 @@ const actualWithColors = actual.map((entry) => ({
             </button>
           ))}
         </div>
-      )}
 
-      {/* ================= CONTROLS ================= */}
-      <div className="flex gap-3">
-        {!isEditing ? (
+        {/* actions */}
+        <div className="flex gap-3 mt-6">
           <button
-            onClick={() => setIsEditing(true)}
-            className="flex-1 bg-indigo-600 text-white p-2 rounded-xl"
+            onClick={handleSave}
+            className="flex-1 bg-green-600 text-white p-2 rounded-xl"
           >
-            Edit
+            Save
           </button>
-        ) : (
-          <>
-            <button
-              onClick={handleSave}
-              disabled={!isValidTotal}
-              className={`flex-1 p-2 rounded-xl text-white ${
-                isValidTotal
-                  ? "bg-green-600"
-                  : "bg-gray-400 cursor-not-allowed"
-              }`}
-            >
-              Save
-            </button>
 
-            <button
-              onClick={reset}
-              className="flex-1 bg-gray-300 p-2 rounded-xl"
-            >
-              Reset
-            </button>
-          </>
-        )}
+          <button
+            onClick={handleCancel}
+            className="flex-1 bg-gray-300 p-2 rounded-xl"
+          >
+            Cancel
+          </button>
+        </div>
+
       </div>
+    </div>
+    )}
+
     </div>
   );
 }

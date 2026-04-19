@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useAppContext } from "../context/AppContext";
 import { useNavigate } from "react-router-dom";
+import { getLocalDateStr, normalizeDate } from "../utils/dateUtils";
+import { toHours, toTimeStr, normalizeTime } from "../utils/Scheduler/timeUtils";
 
 function Calendar() {
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [selectedDate, setSelectedDate] = useState(getLocalDateStr());
 
   const navigate = useNavigate();
   const scrollRef = useRef(null);
@@ -14,19 +14,21 @@ function Calendar() {
   const [showModal, setShowModal] = useState(false);
   
 
-  const { tasks, defaultTask, addTask, updateTask, deleteTask: deleteGlobalTask } = useAppContext();
+  const { tasks, defaultTask, addTask, updateTask, deleteTask: deleteGlobalTask, reminders, generatedSchedule } = useAppContext();
   
   const [newTask, setNewTask] =  useState(defaultTask);
+
 
   const categoryColors = {
   Academic: "bg-indigo-500",
   Health: "bg-green-500",
   Leisure: "bg-yellow-500",
-  Family: "bg-pink-500",
-  "Personal Dev": "bg-purple-500",
+  Work: "bg-purple-500",
   };
 
   const [selectedTask, setSelectedTask] = useState(null);
+  const hasReminder = (taskId) =>
+  reminders.some(r => r.taskId === taskId);
 
   const openCreateModal = () => {
     setNewTask({ ...defaultTask, date: selectedDate });
@@ -53,114 +55,197 @@ function Calendar() {
   };
   
   const getEventTop = (time) => {
-    if (!time) return 0;
-    const [hours, minutes] = time.split(":").map(Number);
-    return hours * 80 + (minutes / 60) * 80; // 80px per hour
-  };
+  const normalized = normalizeTime(time);
+  if (!normalized) return 0;
 
-  const getEndTime = (startTime, duration) => {
-    if (!startTime || !duration) return "";
+  const hours = toHours(normalized);
+  if (hours === null) return 0;
 
-    const [hours, minutes] = startTime.split(":").map(Number);
+  return hours * 80;
+};
 
-    const start = new Date();
-    start.setHours(hours, minutes, 0);
+  const getEndTime = (startTime, durationHours) => {
+  const normalized = normalizeTime(startTime);
+  if (!normalized) return "";
 
-    const end = new Date(start.getTime() + duration * 60 * 60 * 1000);
+  const startHours = toHours(normalized);
+  if (startHours === null) return "";
 
-    const endHours = end.getHours().toString().padStart(2, "0");
-    const endMinutes = end.getMinutes().toString().padStart(2, "0");
+  const endHours = startHours + Number(durationHours || 0);
 
-    return `${endHours}:${endMinutes}`;
-  };
+  return toTimeStr(endHours);
+};
 
-  const getEventHeight = (duration) => duration * 80; // 1hr = 80px, 0.5hr = 40px
+const getEventHeight = (durationHours) => {
+  const duration = Number(durationHours);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
+  if (isNaN(duration) || duration <= 0) return 0;
 
-    const currentHour = new Date().getHours();
-    const scrollAmount = currentHour * 80;
-    el.scrollTop = scrollAmount - 100;
-
-    checkVisibleEvents();
-  }, []);
+  return Math.max(duration * 80, 60); // 👈 minimum height
+};
 
   useEffect(() => {
-    checkVisibleEvents();
-  }, [tasks, selectedDate]);
+  const el = scrollRef.current;
+  if (!el) return;
 
-  const visibleEvents = tasks.filter(e => e.date === selectedDate);
+  const now = new Date();
 
-  const checkVisibleEvents = () => {
-    const el = scrollRef.current;
-    if (!el) return;
+  const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(
+    now.getMinutes()
+  ).padStart(2, "0")}`;
 
-    const scrollTop = el.scrollTop;
-    const visibleStartHour = Math.floor(scrollTop / 80);
-    const visibleEndHour = Math.floor((scrollTop + el.clientHeight) / 80);
+  const top = getEventTop(timeStr);
 
-    const eventHours = tasks
-      .filter((e) => e.date === selectedDate)
-      .map((e) => parseInt(e.time.split(":")[0]));
+  el.scrollTop = top - 100;
+}, []);
 
-    setShowAbove(eventHours.some(h => h < visibleStartHour));
-    setShowBelow(eventHours.some(h => h > visibleEndHour));
+  const generatedEvents = (generatedSchedule?.schedule || [])
+  .map((e, index) => {
+    const date = normalizeDate(e.date);
+    if (!date || date !== normalizeDate(selectedDate)) return null;
+
+    const time =
+      typeof e.start === "number"
+        ? toTimeStr(e.start)
+        : normalizeTime(e.time);
+
+    if (!time) return null;
+
+    return {
+      id: `gen-${index}`,
+      title: e.title,
+      category: e.category,
+      date,
+      time,
+      duration: Number(e.duration) || 1,
+      color:
+        e.type === "deadline"
+          ? "bg-red-400"
+          : categoryColors[e.category] || "bg-gray-500",
+    };
+  })
+  .filter(Boolean);
+
+  const rawEvents = [...tasks, ...generatedEvents];
+
+const normalizeEvent = (e) => {
+  const date = normalizeDate(e.date);
+  if (!date) return null; // ❌ reject bad date (don't fallback)
+
+  let time;
+
+  if (typeof e.start === "number") {
+    time = toTimeStr(e.start);
+  } else {
+    time = normalizeTime(e.time);
+  }
+
+  if (!time) return null; // ❌ reject bad time
+
+  return {
+    id: e.id || `gen-${e.date}-${e.time}-${e.title}`,
+    title: e.title || "Untitled",
+    date,
+    time,
+    duration: Number(e.duration) || 1,
+    category: e.category,
+    color: e.color || "bg-gray-500",
   };
+};
 
-  const computeEventLayout = (events) => {
-    const sorted = [...events].sort(
-      (a, b) => getEventTop(a.time) - getEventTop(b.time)
+const layoutEvents = rawEvents
+  .map(normalizeEvent)
+  .filter(Boolean)
+  .filter(e => e.date === normalizeDate(selectedDate));
+
+
+const computeEventLayout = (events) => {
+  const enriched = events.map(e => {
+    const top = getEventTop(e.time);
+    const height = getEventHeight(e.duration);
+
+    return {
+      ...e,
+      top,
+      height,
+      bottom: top + height,
+    };
+  });
+
+  const sorted = [...enriched].sort((a, b) => a.top - b.top);
+
+  const layout = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    let col = 0;
+
+    while (
+      layout.some(
+        (e) =>
+          e.column === col &&
+          e.bottom > current.top &&
+          current.bottom > e.top
+      )
+    ) {
+      col++;
+    }
+
+    layout.push({
+      ...current,
+      column: col,
+    });
+  }
+
+  return layout.map((event) => {
+    const overlapping = layout.filter(
+      (e) =>
+        e.top < event.bottom &&
+        event.top < e.bottom
     );
 
-    const layout = [];
+    const totalColumns =
+      Math.max(...overlapping.map((e) => e.column)) + 1;
 
-    for (let i = 0; i < sorted.length; i++) {
-      const current = sorted[i];
-      let col = 0;
+    return { ...event, totalColumns };
+  });
+};
 
-      while (
-        layout.some(
-          (e) =>
-            e.column === col &&
-            getEventTop(e.time) + getEventHeight(e.duration) >
-              getEventTop(current.time) &&
-            getEventTop(current.time) + getEventHeight(current.duration) >
-              getEventTop(e.time)
-        )
-      ) {
-        col++;
-      }
+const layout = computeEventLayout(layoutEvents);
 
-      layout.push({
-        ...current,
-        column: col,
-      });
-    }
-    return layout.map((event) => {
-      const overlapping = layout.filter(
-        (e) =>
-          getEventTop(e.time) < getEventTop(event.time) + getEventHeight(event.duration) &&
-          getEventTop(event.time) < getEventTop(e.time) + getEventHeight(e.duration)
-      );
-      const totalColumns = Math.max(...overlapping.map((e) => e.column)) + 1;
-      return { ...event, totalColumns };
-    });
-  };
+useEffect(() => {
+  if (!layout?.length) return;
+  checkVisibleEvents(layout);
+}, [layout]);
 
-  const handleDeleteTask = (taskId) => {
-    deleteGlobalTask(taskId);
-    setSelectedTask(null);
-  };
+const checkVisibleEvents = (layout) => {
+  const el = scrollRef.current;
+  if (!el) return;
 
-  const editTask = (task) => {
-    setNewTask(task);
-    setSelectedTask(null);
-    setShowModal(true);
-  };
+  const scrollTop = el.scrollTop;
+  const visibleTop = scrollTop;
+  const visibleBottom = scrollTop + el.clientHeight;
 
-  const isTaskValid = newTask.date && newTask.time && newTask.duration;
+  setShowAbove(layout.some(e => e.bottom < visibleTop));
+  setShowBelow(layout.some(e => e.top > visibleBottom));
+};
+
+
+const handleDeleteTask = (taskId) => {
+  deleteGlobalTask(taskId);
+  setSelectedTask(null);
+};
+
+const editTask = (task) => {
+  setNewTask(task);
+  setSelectedTask(null);
+  setShowModal(true);
+};
+
+const isTaskValid =
+  normalizeDate(newTask.date) &&
+  normalizeTime(newTask.time) &&
+  Number(newTask.duration) > 0;
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
@@ -206,8 +291,11 @@ function Calendar() {
             ))}
 
             {/* Events */}
-            {computeEventLayout(tasks.filter(t => t.date === selectedDate)).map((event) => {
-              const isPast = new Date(`${event.date}T${event.time}`) < new Date();
+            {layout.map((event) => {
+              const now = new Date();
+              const eventTime = new Date(`${event.date}T${event.time}`);
+
+              const isPast = eventTime < now;
               const width = 100 / event.totalColumns;
               const left = (event.column * 100) / event.totalColumns;
 
@@ -217,8 +305,8 @@ function Calendar() {
                   onClick={() => setSelectedTask(event)}
                   className={`${event.color} text-white rounded-lg px-3 py-2 absolute cursor-pointer overflow-hidden`}
                   style={{
-                    top: `${getEventTop(event.time)}px`,
-                    height: `${getEventHeight(event.duration)}px`,
+                    top: `${event.top}px`,
+                    height: `${event.height}px`,
                     width: `${width}%`,
                     left: `${left}%`,
                   }}
@@ -232,7 +320,7 @@ function Calendar() {
                   </p>
 
                   <div className="mt-1 text-xs">
-                  {event.reminder ? (
+                  { hasReminder(event.id) ? (
                     <span className="text-green-200 font-medium">
                       🔔 Reminder set
                     </span>
@@ -299,7 +387,7 @@ function Calendar() {
           <input
             type="date"
             value={newTask.date || selectedDate}
-            min={new Date().toISOString().split("T")[0]} // disable past dates
+            min={getLocalDateStr()} // disable past dates
             onChange={(e) => setNewTask({ ...newTask, date: e.target.value })}
             className="w-full border p-2 rounded mb-3"
           />

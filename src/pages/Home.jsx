@@ -10,10 +10,23 @@ function Home() {
     month: "long",
   });
 
-  const { getUpcomingTasks, getReminderTasks } = useAppContext();
+  const {tasks, getUpcomingTasks, getReminderTasks } = useAppContext();
 
   const upcomingTasks = getUpcomingTasks();
   const reminders = getReminderTasks();
+
+  const enrichedReminders = reminders
+  .map(rem => {
+    const task = tasks.find(t => t.id === rem.taskId);
+    if (!task) return null;
+
+    return {
+      ...rem,
+      title: task.title,
+      color: task.color,
+    };
+  })
+  .filter(Boolean);
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
@@ -65,18 +78,18 @@ function Home() {
             <p className="text-sm text-gray-400">No reminders set</p>
           )}
 
-          {reminders.map((task) => (
+          {enrichedReminders.map(reminder => (
             <div
-              key={task.id}
+              key={reminder.id}
               className="flex items-center p-4 bg-white rounded-lg shadow-sm"
             >
               {/* subtle color indicator */}
-              <div className={`w-2 h-10 rounded mr-4 ${task.color}`}></div>
+              <div className={`w-2 h-10 rounded mr-4 ${reminder.color}`}></div>
 
               <div>
-                <p className="font-medium text-gray-800">{task.title}</p>
+                <p className="font-medium text-gray-800">{reminder.title}</p>
                 <p className="text-sm text-gray-500">
-                  ⏰ {task.reminderDate} {task.reminderTime}
+                  ⏰ {reminder.reminderDate} {reminder.reminderTime}
                 </p>
               </div>
             </div>

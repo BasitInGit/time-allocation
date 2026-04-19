@@ -1,21 +1,11 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { getActualWeeklyDistribution } from "../utils/analytics";
-import { getTasksForWeek, getWeekRangeLabel } from "../utils/dateUtils";
+import { getWeekRangeLabel, buildDateTime, getTasksForWeek } from "../utils/dateUtils";
+import { timeToMinutesSafe } from "../utils/Scheduler/timeUtils";
 
 const AppContext = createContext();
 
-export function AppProvider({ children }) {
-  // GLOBAL STATE
-
-  const [tasks, setTasks] = useState([]);
-  const [timeDistribution, setTimeDistribution] = useState([]);
-  const [preferences, setPreferences] = useState({
-  isPersonalised: false,
-  });
-
-  const isPersonalised = preferences?.isPersonalised;
-
-  const defaultTask = {
+const defaultTask = {
   id: "",
   title: "",
   category: "Academic",
@@ -23,20 +13,71 @@ export function AppProvider({ children }) {
   time: "",
   duration: "",
   details: "",
-  reminder: false,
+  color: "bg-gray-500",
+};
+
+const defaultReminder = {
+  id: "",
+  taskId: "",
   reminderDate: "",
   reminderTime: "",
   frequency: "once",
-  color: "bg-gray-500",
-  isCompleted: false,
 };
+
+const DEFAULT_DISTRIBUTION = [
+  { name: "Academic", value: 25 },
+  { name: "Work", value: 25 },
+  { name: "Health", value: 25 },
+  { name: "Leisure", value: 25 },
+];
+
+const DEFAULT_PREFERENCES = [
+  {
+    name: "Academic",
+    preferredTime: "morning",
+    intensity: "high",
+  },
+  {
+    name: "Work",
+    preferredTime: "afternoon",
+    intensity: "medium",
+  },
+  {
+    name: "Health",
+    preferredTime: "morning",
+    intensity: "medium",
+  },
+  {
+    name: "Leisure",
+    preferredTime: "evening",
+    intensity: "low",
+  },
+];
+
+export function AppProvider({ children }) {
+  // GLOBAL STATE
+
+  const [tasks, setTasks] = useState([]);
+  const [timeDistribution, setTimeDistribution] = useState([]);
+  const [deadlines, setDeadlines] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [schedulePreferences, setSchedulePreferences] = useState([]);
+
+  const [generatedSchedule, setGeneratedSchedule] = useState({
+    schedule: [],
+    analysis: {
+      totalHours: 0,
+      recommendedIntensity: "Balanced",
+      warning: null,
+    },
+  });
 
   //  Add task
 const addTask = (task) => {
   const newTask = {
     ...defaultTask,
     ...task,
-    id: Date.now(),
+    id: crypto.randomUUID(),
   };
 
   setTasks(prev => [...prev, newTask]);
@@ -50,27 +91,42 @@ const deleteTask = (id) => {
 const updateTask = (updatedTask) => {
   setTasks(prev =>
     prev.map(task =>
-      task.id === updatedTask.id ? updatedTask : task
+      task.id === updatedTask.id
+  ? { ...task, ...updatedTask }
+  : task
     )
   );
 };
 
-// Toggle complete
-const toggleComplete = (id) => {
-  setTasks(prev =>
-    prev.map(task =>
-      task.id === id
-        ? { ...task, isCompleted: !task.isCompleted }
-        : task
+const addReminder = (reminder) => {
+  const newReminder = {
+    ...reminder,
+    id: crypto.randomUUID(),
+  };
+
+  setReminders(prev => [...prev, newReminder]);
+};
+
+const updateReminder = (updatedReminder) => {
+  setReminders(prev =>
+    prev.map(reminder =>
+      reminder.id === updatedReminder.id
+        ? { ...reminder, ...updatedReminder }
+        : reminder
     )
   );
 };
 
-const sortTasksByTime = (taskList) => {
-  return [...taskList].sort(
-    (a, b) => new Date(a.time) - new Date(b.time)
-  );
+const deleteReminder = (id) => {
+  setReminders(prev => prev.filter(r => r.id !== id));
 };
+
+
+const sortTasksByTime = (taskList) =>
+  [...taskList].sort(
+    (a, b) =>
+      timeToMinutesSafe(a.time) - timeToMinutesSafe(b.time)
+  );
 
 const getUpcomingTasks = () => {
   const now = new Date();
@@ -78,38 +134,41 @@ const getUpcomingTasks = () => {
   return tasks
     .filter(task => !task.isDeadline && !task.isCompleted && task.time && task.date)
     .filter(task => {
-      const taskDateTime = new Date(`${task.date}T${task.time}`);
-      return taskDateTime >= now; // only future tasks
+      const taskDateTime = buildDateTime(task.date, task.time);
+      return taskDateTime && taskDateTime >= now; // only future tasks
     })
-    .sort((a, b) => new Date(`${a.date}T${a.time}`) - new Date(`${b.date}T${b.time}`))
+    .sort((a, b) => {
+      return buildDateTime(a.date, a.time) - buildDateTime(b.date, b.time);
+    })
     .slice(0, 3); // first 3 upcoming
 };
 
 const getReminderTasks = () => {
   const now = new Date();
 
-  return tasks
-    .filter(task => task.reminder && task.reminderDate && task.reminderTime)
-    .filter(task => {
-      const reminderDateTime = new Date(
-        `${task.reminderDate}T${task.reminderTime}`
-      );
-      return reminderDateTime >= now;
+  return reminders
+    .map(rem => {
+      const task = tasks.find(t => t.id === rem.taskId);
+      const reminderDateTime = buildDateTime(rem.reminderDate, rem.reminderTime);
+
+      return {
+        ...rem,
+        task,
+        reminderDateTime,
+      };
     })
-    .sort(
-      (a, b) =>
-        new Date(`${a.reminderDate}T${a.reminderTime}`) -
-        new Date(`${b.reminderDate}T${b.reminderTime}`)
-    )
+    .filter(r => r.task && r.reminderDateTime >= now)
+    .sort((a, b) => a.reminderDateTime - b.reminderDateTime)
     .slice(0, 3);
 };
+
 
 const getWeeklyActualDistribution = () => {
   const weeklyTasks = getTasksForWeek(tasks);
   return getActualWeeklyDistribution(weeklyTasks);
 };
 
-const weekLabel = getWeekRangeLabel();
+const weekLabel = getWeekRangeLabel(new Date());
 
   // LOAD FROM LOCAL STORAGE
   useEffect(() => {
@@ -120,16 +179,24 @@ const weekLabel = getWeekRangeLabel();
     }));
     setTasks(normalizedTasks);
 
-    const savedPrefs = JSON.parse(localStorage.getItem("preferences")) || {};
-    setPreferences({
-      isPersonalised: false,
-      ...savedPrefs,
-    });
+    const savedRems  = JSON.parse(localStorage.getItem("reminders")) || [];
+    setReminders(
+  savedRems?.length ? savedRems : []
+);
 
-    const savedDist = JSON.parse(localStorage.getItem("timeDistribution")) || [];
+    const savedPrefs = JSON.parse(localStorage.getItem("schedulePreferences"));
 
-    setPreferences(savedPrefs);
-    setTimeDistribution(savedDist);
+    setSchedulePreferences(
+      savedPrefs?.length ? savedPrefs : DEFAULT_PREFERENCES
+    );
+
+    const savedDead = JSON.parse(localStorage.getItem("deadlines")) || [];
+    setDeadlines(savedDead);
+
+    const savedDist = JSON.parse(localStorage.getItem("timeDistribution"));
+    setTimeDistribution(
+    savedDist?.length ? savedDist : DEFAULT_DISTRIBUTION
+);
   }, []);
 
   // SAVE TO LOCAL STORAGE
@@ -138,12 +205,23 @@ const weekLabel = getWeekRangeLabel();
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem("preferences", JSON.stringify(preferences));
-  }, [preferences]);
+    localStorage.setItem("deadlines", JSON.stringify(deadlines));
+  }, [deadlines]);
+
+  useEffect(() => {
+    localStorage.setItem("reminders", JSON.stringify(reminders));
+  }, [reminders]);
 
   useEffect(() => {
     localStorage.setItem("timeDistribution", JSON.stringify(timeDistribution));
   }, [timeDistribution]);
+
+  useEffect(() => {
+  localStorage.setItem(
+    "schedulePreferences",
+    JSON.stringify(schedulePreferences)
+  );
+}, [schedulePreferences]);
 
   return (
     <AppContext.Provider
@@ -153,18 +231,26 @@ const weekLabel = getWeekRangeLabel();
         addTask,
         deleteTask,
         updateTask,
-        toggleComplete,
 
         getUpcomingTasks,
         getReminderTasks,
         getWeeklyActualDistribution,
         weekLabel,
 
-        preferences,
-        setPreferences,
-        isPersonalised,
+        deadlines,
+        setDeadlines,
         timeDistribution,
         setTimeDistribution,
+        reminders,
+        setReminders,
+        defaultReminder,
+        addReminder,
+        updateReminder,
+        deleteReminder,
+        schedulePreferences,
+        setSchedulePreferences,
+        generatedSchedule,
+        setGeneratedSchedule,
       }}
     >
       {children}

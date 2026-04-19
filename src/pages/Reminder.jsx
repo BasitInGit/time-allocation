@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { useAppContext } from "../context/AppContext";
 import { useParams } from "react-router-dom";
 import { useRef } from "react";
-
+import { normalizeDate, buildDateTime } from "../utils/dateUtils";
+import { normalizeTime } from "../utils/Scheduler/timeUtils";
 
 function Reminders() {
-  const { tasks, updateTask } = useAppContext();
+  const { tasks, reminders, addReminder, updateReminder, deleteReminder } = useAppContext();
   const { taskId } = useParams();
   const taskRefs = useRef({});
 
@@ -22,86 +23,91 @@ function Reminders() {
 
   useEffect(() => {
     if (taskId) {
-      const found = tasks.find(t => t.id === Number(taskId));
+      const found = tasks.find(t => t.id === taskId);
       if (found) {
         selectTask(found);
       }
     }
   }, [taskId]); 
 
-  const selectTask = (task) => {
-    setSelectedTask(task);
-    setSelectedDate(task.date);
+const selectTask = (task) => {
+  if (!task) return;
 
-    setForm({
-      reminder: true,
-      reminderDate: task.reminderDate || task.date,
-      reminderTime: task.reminderTime || task.time,
-      frequency: task.frequency || "once",
-    });
-  };
+  setSelectedTask(task);
+  setSelectedDate(task.date || "");
+
+  const existing = reminders.find(r => r.taskId === task.id);
+
+  setForm({
+    reminderDate: existing?.reminderDate ?? "",
+    reminderTime: existing?.reminderTime ?? "",
+    frequency: existing?.frequency ?? "once",
+  });
+};
+
   const [recentlySavedId, setRecentlySavedId] = useState(null);
 
-  const handleSave = () => {
-    if (!selectedTask) return;
+const handleSave = () => {
+  if (!selectedTask) return;
 
-    const updatedTask = {
-        ...selectedTask,
-        ...form,
-        reminder: true,
-    };
+  const existing = reminders.find(r => r.taskId === selectedTask.id);
 
-    updateTask(updatedTask);
-    
-    setRecentlySavedId(updatedTask.id);
+  const newReminder = {
+    id: existing?.id || crypto.randomUUID(),
+    taskId: selectedTask.id,
+    reminderDate: normalizeDate(form.reminderDate),
+    reminderTime: normalizeTime(form.reminderTime),
+    frequency: form.frequency,
+  };
 
-    setTimeout(() => {
-        taskRefs.current[updatedTask.id]?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        });
-    }, 100);
+  if (existing) {
+    updateReminder(newReminder);
+  } else {
+    addReminder(newReminder);
+  }
 
-    setTimeout(() => {
-        setRecentlySavedId(null);
-    }, 1500);
+  setRecentlySavedId(selectedTask.id);
 
-    setSelectedTask(null);
-
-    setForm({
-        reminder: true,
-        reminderDate: "",
-        reminderTime: "",
-        frequency: "once",
+  setTimeout(() => {
+    taskRefs.current[selectedTask.id]?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
     });
+  }, 100);
 
-    setSelectedDate("");
- };
+  setTimeout(() => setRecentlySavedId(null), 1500);
 
- const handleDeleteReminder = (task) => {
-  const updatedTask = {
-    ...task,
-    reminder: false,
+  setSelectedTask(null);
+  setSelectedDate("");
+  setForm({
     reminderDate: "",
     reminderTime: "",
     frequency: "once",
-  };
+  });
+};
 
-  updateTask(updatedTask);
+const handleDeleteReminder = (task) => {
+  const reminder = reminders.find(r => r.taskId === task.id);
+  if (!reminder) return;
+
+  deleteReminder(reminder.id);
 
   if (selectedTask?.id === task.id) {
     setSelectedTask(null);
     setForm({
-      reminder: true,
       reminderDate: "",
       reminderTime: "",
       frequency: "once",
     });
   }
- };
+};
+ 
 
-  const isOverdue = (task) =>
-    new Date(`${task.reminderDate}T${task.reminderTime}`) < new Date();
+const isOverdue = (r) => {
+  const now = new Date();
+  const due = buildDateTime(r.reminderDate, r.reminderTime);
+  return due ? due < now : false;
+};
 
   const isToday = (task) => {
     const taskDate = new Date(task.reminderDate);
@@ -114,7 +120,7 @@ function Reminders() {
     );
   };
 
-  const reminders = tasks.filter(t => t.reminder);
+
   const overdueReminders = reminders.filter(isOverdue);
   const todayReminders = reminders.filter(
     t => !isOverdue(t) && isToday(t)
@@ -127,7 +133,7 @@ function Reminders() {
   ? []
   : tasks.filter(
       t =>
-        t.date === selectedDate &&
+        normalizeDate(t.date) === normalizeDate(selectedDate) &&
         (!t.reminder || t.id === selectedTask?.id)
     );
 
@@ -167,7 +173,10 @@ function Reminders() {
 
                 <div className="flex gap-3 mt-2">
                 <button
-                    onClick={() => selectTask(task)}
+                    onClick={() => {
+                      const fullTask = tasks.find(t => t.id === task.taskId || t.id === task.id);
+                      selectTask(fullTask || task);
+                    }}
                     className="text-sm text-indigo-600"
                 >
                     Edit
@@ -308,7 +317,8 @@ function Reminders() {
             onChange={(e) =>
               setForm({ ...form, reminderDate: e.target.value })
             }
-            className="w-full border p-2 rounded"
+            className={`w-full border p-2 rounded transition
+            ${!form.reminderDate ? "text-gray-400 blur-[0.2px]" : ""}`}
           />
         </div>
 
@@ -323,7 +333,8 @@ function Reminders() {
             onChange={(e) =>
               setForm({ ...form, reminderTime: e.target.value })
             }
-            className="w-full border p-2 rounded"
+            className={`w-full border p-2 rounded transition
+            ${!form.reminderTime ? "text-gray-400 blur-[0.2px]" : ""}`}
           />
         </div>
 
@@ -337,7 +348,7 @@ function Reminders() {
             onChange={(e) =>
               setForm({ ...form, frequency: e.target.value })
             }
-            className="w-full border p-2 rounded"
+            className="w-full border p-2 rounded text-gray-700"
           >
             <option value="once">Once</option>
             <option value="daily">Daily</option>
@@ -357,6 +368,6 @@ function Reminders() {
     </div>
   </div>
 );
-}
+};
 
 export default Reminders;
