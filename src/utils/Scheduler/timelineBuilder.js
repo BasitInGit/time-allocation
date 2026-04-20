@@ -1,58 +1,75 @@
 import { toHours, toTimeStr } from "./timeUtils";
 import { normalizeDate } from "../dateUtils";;
 
+
+function mergeOverlappingTasks(existingTasks = []) {
+  // 1. Convert tasks → time ranges
+  const ranges = existingTasks
+    .map(t => {
+      const start = toHours(t.time);
+      const duration = Number(t.duration || 1);
+      const end = start + duration;
+
+      if (start == null || isNaN(end)) return null;
+
+      return { start, end };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.start - b.start);
+
+  const merged = [];
+
+  // 2. Merge overlapping ranges
+  for (const range of ranges) {
+    if (!merged.length) {
+      merged.push(range);
+      continue;
+    }
+    const last = merged[merged.length - 1];
+    // overlap or touching
+    if (range.start <= last.end) {
+      last.end = Math.max(last.end, range.end);
+    } else {
+      merged.push(range);
+    }
+  }
+  return merged;
+}
 /**
  * Build free time blocks by removing existing tasks
  */
 export function buildTimelineBlocks({
-  date,
   startTime,
   endTime,
   existingTasks = [],
 }) {
   const start = toHours(startTime);
-const end = toHours(endTime);
+  const end = toHours(endTime);
 
-const sorted = [...existingTasks]
-  .filter(t => {
-    const tTime = toHours(t.time);
-    return tTime >= start && tTime < end;
-  })
-  .sort((a, b) => toHours(a.time) - toHours(b.time));
+  const blocked = mergeOverlappingTasks(existingTasks);
 
   const blocks = [];
   let cursor = start;
 
-  for (const task of sorted) {
-    const taskStart = toHours(task.time);
-    const taskEnd = taskStart + (task.duration || 1);
+  for (const b of blocked) {
 
-    // gap BEFORE task
-    if (taskStart > cursor) {
+    if (b.start > cursor) {
       blocks.push({
         start: cursor,
-        end: taskStart,
+        end: b.start,
         type: "free",
       });
     }
 
-    // push fixed task
     blocks.push({
-  start: taskStart,
-  end: taskEnd,
-  type: "fixed",
-  task: {
-    ...task,
-    time: task.time,
-    id: task.id,
-    date: normalizeDate(task.date),
-  }
-});
+      start: b.start,
+      end: b.end,
+      type: "fixed",
+    });
 
-    cursor = Math.max(cursor, taskEnd);
+    cursor = Math.max(cursor, b.end);
   }
 
-  // trailing free time
   if (cursor < end) {
     blocks.push({
       start: cursor,
@@ -62,14 +79,4 @@ const sorted = [...existingTasks]
   }
 
   return blocks;
-}
-
-export function extractFreeSlots(blocks) {
-  return blocks
-    .filter(b => b.type === "free")
-    .map(b => ({
-      start: b.start,
-      end: b.end,
-      duration: b.end - b.start,
-    }));
 }

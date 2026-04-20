@@ -5,6 +5,7 @@ import { useAppContext } from "../context/AppContext";
 import { analyzeDeadlineLoadByCategory } from "../utils/deadlineAnalyser";
 import { getLocalDateStr, normalizeDate } from "../utils/dateUtils";
 import {toMinutes} from "../utils/Scheduler/timeUtils";
+import { getActualWeeklyDistribution2 } from "../utils/analytics";
 
 const INTENSITY_OPTIONS = ["Light", "Balanced", "Intense"];
 
@@ -15,11 +16,18 @@ const DEFAULT_PREFS = [
   { name: "Leisure", preferredTime: "any", intensity: "medium" },
 ];
 
+const categoryColors = {
+  Academic: "bg-indigo-500",
+  Health: "bg-green-500",
+  Leisure: "bg-yellow-500",
+  Work: "bg-purple-500",
+  };
 export default function Generate() {
   const navigate = useNavigate();
 
   const {
     tasks,
+    setTasks,
     deadlines,
     timeDistribution,
     schedulePreferences,
@@ -38,6 +46,7 @@ export default function Generate() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
 
+  const [useTargetDistribution, setUseTargetDistribution] = useState(false);
   const [draftPreferences, setDraftPreferences] = useState([]);
 
   useEffect(() => {
@@ -89,23 +98,49 @@ const [loading, setLoading] = useState(false);
       ? tasks.filter(t =>normalizeDate(t.date) === normalizeDate(selectedDate))
       : [];
 
+    let distribution = null;
+
+    if (useTargetDistribution && selectedDate) {
+      const actual = getActualWeeklyDistribution(tasks, selectedDate);
+
+      distribution = timeDistribution.map(targetCat => {
+        const actualMatch = actual.find(a => a.name === targetCat.name);
+
+        return {
+          category: targetCat.name,
+          delta: (targetCat.value || 0) - (actualMatch?.value || 0),
+        };
+      });
+    }
     const schedule = generateSchedule({
       date: selectedDate,
       startTime,
       endTime,
-      tasks,
       deadlines,
-      distribution: timeDistribution,
+      distribution,
       preferences: draftPreferences,
       categoryAnalysis: analysisByCategory,
       existingTasks,
     });
 
-    setGeneratedSchedule({
-      schedule 
-    });
+    const generatedTasks = schedule.map((t, i) => ({
+      id: `gen-${i}-${t.date}-${t.start}`,
+      title: t.name,
+      category: t.category,
+      date: t.date,
+      time: toTimeStr(t.start),
+      duration: t.duration,
+      color: categoryColors[t.category] || "bg-gray-500",
+      generated: true,
+    }));
+    
+    setTasks((prev) => [
+      ...prev.filter(t => !t.generated),
+      ...generatedTasks
+    ]);
+
     console.log("SCHEDULE OUTPUT:", schedule);
-    console.log("ANALYSIS:", analysis);
+    console.log("ANALYSIS:", analysisByCategory);
 
     setLoading(false);
     navigate("/calendar");
@@ -270,6 +305,17 @@ const [loading, setLoading] = useState(false);
           />
           <span className="text-sm text-gray-600">
             Use existing calendar tasks
+          </span>
+        </div>
+
+        <div className="mb-6 flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={useTargetDistribution}
+            onChange={() => setUseTargetDistribution(!useTargetDistribution)}
+          />
+          <span className="text-sm text-gray-600">
+            Aim for target distribution
           </span>
         </div>
 

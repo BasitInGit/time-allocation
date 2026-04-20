@@ -99,34 +99,7 @@ const getEventHeight = (durationHours) => {
   el.scrollTop = top - 100;
 }, []);
 
-  const generatedEvents = (generatedSchedule?.schedule || [])
-  .map((e, index) => {
-    const date = normalizeDate(e.date);
-    if (!date || date !== normalizeDate(selectedDate)) return null;
-
-    const time =
-      typeof e.start === "number"
-        ? toTimeStr(e.start)
-        : normalizeTime(e.time);
-
-    if (!time) return null;
-
-    return {
-      id: `gen-${index}`,
-      title: e.title,
-      category: e.category,
-      date,
-      time,
-      duration: Number(e.duration) || 1,
-      color:
-        e.type === "deadline"
-          ? "bg-red-400"
-          : categoryColors[e.category] || "bg-gray-500",
-    };
-  })
-  .filter(Boolean);
-
-  const rawEvents = [...tasks, ...generatedEvents];
+  
 
 const normalizeEvent = (e) => {
   const date = normalizeDate(e.date);
@@ -153,9 +126,8 @@ const normalizeEvent = (e) => {
   };
 };
 
-const layoutEvents = rawEvents
+const layoutEvents = tasks
   .map(normalizeEvent)
-  .filter(Boolean)
   .filter(e => e.date === normalizeDate(selectedDate));
 
 

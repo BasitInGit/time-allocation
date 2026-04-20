@@ -1,142 +1,138 @@
 import { toHours, toTimeStr } from "./timeUtils";
-import { buildTimelineBlocks, extractFreeSlots } from "./timelineBuilder";
-import { fillTasks } from "./taskFiller";
-import { INTENSITY_RULES } from "./intensityRules";
-import { buildTaskPool } from "./buildTaskPool";
+import { buildTimelineBlocks } from "./timelineBuilder";
+import { getGap } from "./gapHelper";
+import { getAllowedCategories } from "./scoreHelper";
+import { pickCategory, pickIntensity } from "./pickHelper";
+import { pickTask, TASK_LIBRARY } from "./taskPicker";
 import { normalizeDate } from "../dateUtils";
 
-const MIN_BLOCK = {
-  Light: 0.3,
-  Balanced: 0.5,
-  Intense: 0.75,
-};
 
 export function generateSchedule({
   date,
   startTime,
   endTime,
-  tasks = [],
   distribution = [],
   preferences = [],
   categoryAnalysis = [],
   existingTasks = [],
 }) {
+
   const cleanDate = normalizeDate(date);
 
-  // =====================
-  // 1. BASE TIMELINE
-  // =====================
+  const start = toHours(startTime);
+  const end = toHours(endTime);
+
   const baseTimeline = buildTimelineBlocks({
-  date,
-  startTime,
-  endTime,
-  existingTasks,
-}).filter(block =>
-  block.start >= toHours(startTime) &&
-  block.start < toHours(endTime)
-);
+    date,
+    startTime,
+    endTime,
+    existingTasks,
+  })
+  .map(block => ({
+    ...block,
+    start: Math.max(block.start, start),
+    end: Math.min(block.end, end),
+  }))
+  .filter(block => block.end > block.start);
 
-  const freeSlots = extractFreeSlots(baseTimeline);
+  let lastCategory = null;
+  let lastTaskName = null;
+  let prevLoad = 0;
+  let gap = 0;
 
+  const scheduled = [];
 
-  const rules = INTENSITY_RULES[intensity];
+for (const block of baseTimeline) {
 
-const totalFree = freeSlots.reduce((a, s) => a + s.duration, 0);
+  const duration = block.end - block.start;
 
-const usableWorkTime = totalFree * rules.utilisation;
-
-let categoryBudgets = buildCategoryBudgets(
-    distribution,
-    rules,
-    usableWorkTime
-  );
-
-
-
-  // =====================
-  // 4. TASK POOL
-  // =====================
-  const taskPool = buildTaskPool({
-    intensity,
-    distribution,
-  });
+  const timeOfDay =
+    block.start < 12 ? "morning" :
+    block.start < 17 ? "afternoon" :
+    "evening";
 
   // =====================
-  // 5. FILL REMAINING SPACE
+  // FIXED BLOCK
   // =====================
-  let filled = [];
+  if (block.type === "fixed") {
 
-  for (const slot of freeSlots) {
-  filled.push(
-    ...fillTasks({
-      slot,
-  taskPool,
-  categoryBudgets,
-  distribution,
-  intensity,
-  rules,
-    })
-  );
-}
+    prevLoad += duration;
 
-  // =====================
-  // 7. FINAL OUTPUT
-  // =====================
+    if (prevLoad >= 2) {
+      gap = getGap(prevLoad, timeOfDay);
+      prevLoad = 0;
+    }
 
-  const normalizeOutput = (e) => {
-  let start = e.start;
-
-  // convert HH:MM → number if needed
-  if (typeof start === "string") {
-    start = toHours(start);
+    continue;
   }
 
-  if (typeof start !== "number" || isNaN(start)) {
-    console.warn("BAD EVENT:", e);
-    return null;
+  // =====================
+  // FREE BLOCK
+  // =====================
+  let remaining = duration - gap;
+  let cursor = block.start + gap;
+
+  gap = 0;
+
+  while (remaining > 0) {
+
+    const allowed = getAllowedCategories(timeOfDay, preferences);
+    const categories = allowed.length
+      ? allowed
+      : preferences.map(p => p.name);
+
+    const category = pickCategory({
+      categories,
+      lastCategory,
+      timeOfDay,
+      preferences,
+      distribution,
+    });
+
+    if (!category) break;
+
+    const intensity = pickIntensity({
+      category,
+      prevLoad,
+      preferences,
+      categoryAnalysis,
+    });
+
+
+    const task = pickTask({
+      category,
+      intensity,
+      slotDuration: Math.min(2, remaining),
+      taskLibrary: TASK_LIBRARY,
+      lastTaskName,
+    });
+
+    if (!task) break;
+
+    scheduled.push({
+      ...task,
+      category,
+      start: cursor,
+      end: cursor + task.duration,
+    });
+
+    lastCategory = category;
+    lastTaskName = task.name;
+
+    cursor += task.duration;
+    remaining -= task.duration;
+    prevLoad += task.duration;
+
+    if (prevLoad >= 2) {
+      gap = getGap(prevLoad, timeOfDay);
+      prevLoad = 0;
+      cursor += gap;
+      remaining -= gap;
+    }
   }
-
-  return {
-    id: e.id || `gen-${Math.random()}`,
-    title: e.title,
-    category: e.category,
-    date: cleanDate,
-    time: toTimeStr(start),
-    duration: Number(e.duration) || 1,
-    type: e.type || "task",
-  };
-};
-
-  return filled
-  .map(normalizeOutput)
-.filter(Boolean)
-  .sort((a, b) => toHours(a.time) - toHours(b.time));
 }
+return scheduled
 
-function buildCategoryBudgets(distribution, intensityRules, usableHours) {
-  const intensityWeights = intensityRules.weights || {};
-
-  const totalUserWeight = distribution.reduce(
-    (a, d) => a + (d.value || 1),
-    0
-  );
-
-  const raw = distribution.map(d => {
-    const userRatio = (d.value || 1) / totalUserWeight;
-    const intensityWeight = intensityWeights[d.name] ?? 1;
-
-    return {
-      name: d.name,
-      rawScore: userRatio * intensityWeight,
-    };
-  });
-
-  const totalScore = raw.reduce((a, d) => a + d.rawScore, 0);
-
-  return raw.map(d => ({
-    name: d.name,
-    hours: (d.rawScore / totalScore) * usableHours,
-  }));
 }
 
 

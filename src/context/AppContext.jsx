@@ -14,6 +14,7 @@ const defaultTask = {
   duration: "",
   details: "",
   color: "bg-gray-500",
+  generated: false,
 };
 
 const defaultReminder = {
